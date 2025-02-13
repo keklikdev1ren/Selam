@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Performans Takip ve Tahmin Aracı</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        .input-group {
+            margin: 20px 0;
+        }
+        input {
+            padding: 8px;
+            margin: 5px 0;
+        }
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #result {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Performans Takip ve Tahmin Aracı</h1>
+    
+    <div class="input-group">
+        <label for="target">Hedef Puan:</label><br>
+        <input type="number" id="target" step="0.1" placeholder="Örn: 80.0"><br>
+        
+        <label for="scores">Geçmiş Puanlar (virgülle ayırın):</label><br>
+        <input type="text" id="scores" placeholder="Örn: 54.3, 34.5, 62.3"><br>
+        
+        <button onclick="analyze()">Analiz Et</button>
+    </div>
+
+    <div id="result"></div>
+    <canvas id="chart"></canvas>
+
+    <script>
+        let myChart = null;
+
+        function analyze() {
+            const targetScore = parseFloat(document.getElementById('target').value);
+            const scoresText = document.getElementById('scores').value;
+            const scores = scoresText.split(',').map(s => parseFloat(s.trim())).filter(s => !isNaN(s));
+
+            if (isNaN(targetScore) || scores.length < 2) {
+                alert('Lütfen geçerli bir hedef puan ve en az 2 geçmiş puan girin.');
+                return;
+            }
+
+            // Linear regression için hesaplamalar
+            const n = scores.length;
+            const x = Array.from({length: n}, (_, i) => i + 1);
+            const y = scores;
+            
+            const sumX = x.reduce((a, b) => a + b, 0);
+            const sumY = y.reduce((a, b) => a + b, 0);
+            const sumXY = x.reduce((a, b, i) => a + b * y[i], 0);
+            const sumXX = x.reduce((a, b) => a + b * b, 0);
+            
+            const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+            const intercept = (sumY - slope * sumX) / n;
+
+            // Hedefe ulaşma tahmini
+            const estimatedTests = Math.ceil((targetScore - intercept) / slope) - n;
+            
+            // Sonuçları göster
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = `
+                <h3>Analiz Sonuçları:</h3>
+                <p>Mevcut ilerleme hızı: ${slope.toFixed(2)} puan/test</p>
+                <p>Başlangıç seviyesi: ${intercept.toFixed(2)} puan</p>
+                <p>Hedefe ulaşmak için gereken yaklaşık test sayısı: ${estimatedTests} test</p>
+            `;
+
+            // Grafik oluştur
+            const ctx = document.getElementById('chart').getContext('2d');
+            
+            // Tahmin çizgisi için noktalar
+            const futureDots = 10;
+            const allX = [...x, ...Array.from({length: futureDots}, (_, i) => n + i + 1)];
+            const predictedY = allX.map(xi => slope * xi + intercept);
+
+            if (myChart) {
+                myChart.destroy();
+            }
+
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: allX,
+                    datasets: [{
+                        label: 'Mevcut Performans',
+                        data: [...scores, ...Array(futureDots).fill(null)],
+                        borderColor: 'orange',
+                        backgroundColor: 'orange',
+                        pointRadius: 5
+                    }, {
+                        label: 'Tahmini Performans',
+                        data: predictedY,
+                        borderColor: 'blue',
+                        borderDash: [5, 5],
+                        pointRadius: 0
+                    }, {
+                        label: 'Hedef',
+                        data: Array(allX.length).fill(targetScore),
+                        borderColor: 'red',
+                        borderDash: [2, 2],
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: Math.max(targetScore * 1.2, Math.max(...scores) * 1.2)
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Test Sayısı'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
