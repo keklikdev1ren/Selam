@@ -3,59 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Performans Takip ve Tahmin Aracı</title>
+    <title>Gelişmiş Performans Analizi</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.7.0/chart.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 800px;
+            max-width: 1000px;
             margin: 20px auto;
-            padding: 0 20px;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .input-group {
             margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
         }
         input {
-            padding: 8px;
+            padding: 10px;
             margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%;
+            max-width: 300px;
         }
         button {
-            padding: 10px 20px;
-            background: #007bff;
+            padding: 12px 24px;
+            background: #2196F3;
             color: white;
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
         }
         button:hover {
-            background: #0056b3;
+            background: #1976D2;
         }
-        #result {
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
             margin: 20px 0;
+        }
+        .stat-card {
+            background: white;
             padding: 15px;
-            border: 1px solid #ddd;
             border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .chart-container {
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
     </style>
 </head>
 <body>
-    <h1>Performans Takip ve Tahmin Aracı</h1>
-    
-    <div class="input-group">
-        <label for="target">Hedef Puan:</label><br>
-        <input type="number" id="target" step="0.1" placeholder="Örn: 80.0"><br>
+    <div class="container">
+        <h1>Gelişmiş Performans Analizi</h1>
         
-        <label for="scores">Geçmiş Puanlar (virgülle ayırın):</label><br>
-        <input type="text" id="scores" placeholder="Örn: 54.3, 34.5, 62.3"><br>
-        
-        <button onclick="analyze()">Analiz Et</button>
+        <div class="input-group">
+            <label for="target">Hedef Puan:</label><br>
+            <input type="number" id="target" step="0.1" placeholder="Örn: 80.0"><br>
+            
+            <label for="scores">Geçmiş Puanlar (virgülle ayırın):</label><br>
+            <input type="text" id="scores" placeholder="Örn: 54.3, 34.5, 62.3"><br>
+            
+            <button onclick="analyze()">Detaylı Analiz Yap</button>
+        </div>
+
+        <div id="stats" class="stats-grid"></div>
+        <div class="chart-container">
+            <canvas id="mainChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <canvas id="progressChart"></canvas>
+        </div>
     </div>
 
-    <div id="result"></div>
-    <canvas id="chart"></canvas>
-
     <script>
-        let myChart = null;
+        let mainChart = null;
+        let progressChart = null;
+
+        function calculateStatistics(scores) {
+            const n = scores.length;
+            const mean = scores.reduce((a, b) => a + b, 0) / n;
+            const variance = scores.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
+            const stdDev = Math.sqrt(variance);
+            const min = Math.min(...scores);
+            const max = Math.max(...scores);
+            
+            // Son 3 testteki trend
+            const recentTrend = n >= 3 ? 
+                ((scores[n-1] - scores[n-3]) / 2).toFixed(2) : 
+                "Yetersiz veri";
+
+            return { mean, stdDev, min, max, recentTrend };
+        }
+
+        function calculateConfidenceInterval(slope, intercept, scores) {
+            const n = scores.length;
+            const x = Array.from({length: n}, (_, i) => i + 1);
+            const predictedY = x.map(xi => slope * xi + intercept);
+            
+            // Standart hata hesaplama
+            const residuals = scores.map((score, i) => score - predictedY[i]);
+            const residualsSumSquares = residuals.reduce((a, b) => a + b * b, 0);
+            const standardError = Math.sqrt(residualsSumSquares / (n - 2));
+            
+            return standardError * 1.96; // 95% güven aralığı
+        }
 
         function analyze() {
             const targetScore = parseFloat(document.getElementById('target').value);
@@ -67,7 +133,10 @@
                 return;
             }
 
-            // Linear regression için hesaplamalar
+            // İstatistiksel hesaplamalar
+            const stats = calculateStatistics(scores);
+            
+            // Linear regression
             const n = scores.length;
             const x = Array.from({length: n}, (_, i) => i + 1);
             const y = scores;
@@ -79,66 +148,156 @@
             
             const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
             const intercept = (sumY - slope * sumX) / n;
+            const confidenceInterval = calculateConfidenceInterval(slope, intercept, scores);
 
             // Hedefe ulaşma tahmini
             const estimatedTests = Math.ceil((targetScore - intercept) / slope) - n;
             
-            // Sonuçları göster
-            const resultDiv = document.getElementById('result');
-            resultDiv.innerHTML = `
-                <h3>Analiz Sonuçları:</h3>
-                <p>Mevcut ilerleme hızı: ${slope.toFixed(2)} puan/test</p>
-                <p>Başlangıç seviyesi: ${intercept.toFixed(2)} puan</p>
-                <p>Hedefe ulaşmak için gereken yaklaşık test sayısı: ${estimatedTests} test</p>
+            // R-kare (belirleme katsayısı) hesaplama
+            const predictedY = x.map(xi => slope * xi + intercept);
+            const meanY = sumY / n;
+            const totalSS = y.reduce((a, b) => a + Math.pow(b - meanY, 2), 0);
+            const residualSS = y.reduce((a, b, i) => a + Math.pow(b - predictedY[i], 2), 0);
+            const rSquared = 1 - (residualSS / totalSS);
+
+            // İstatistikleri göster
+            document.getElementById('stats').innerHTML = `
+                <div class="stat-card">
+                    <h3>Temel İstatistikler</h3>
+                    <p>Ortalama: ${stats.mean.toFixed(2)}</p>
+                    <p>Standart Sapma: ${stats.stdDev.toFixed(2)}</p>
+                    <p>En Düşük: ${stats.min}</p>
+                    <p>En Yüksek: ${stats.max}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Trend Analizi</h3>
+                    <p>İlerleme Hızı: ${slope.toFixed(2)} puan/test</p>
+                    <p>Son 3 Test Trendi: ${stats.recentTrend}</p>
+                    <p>Güven Aralığı: ±${confidenceInterval.toFixed(2)}</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Tahminler</h3>
+                    <p>Hedefe Kalan Test: ${estimatedTests}</p>
+                    <p>Model Doğruluğu: %${(rSquared * 100).toFixed(1)}</p>
+                    <p>Tahmini Ulaşma Süresi: ${Math.abs(estimatedTests)} test</p>
+                </div>
             `;
 
-            // Grafik oluştur
-            const ctx = document.getElementById('chart').getContext('2d');
+            // Ana grafik
+            const ctx = document.getElementById('mainChart').getContext('2d');
             
-            // Tahmin çizgisi için noktalar
             const futureDots = 10;
             const allX = [...x, ...Array.from({length: futureDots}, (_, i) => n + i + 1)];
             const predictedY = allX.map(xi => slope * xi + intercept);
+            const confidenceBandUpper = predictedY.map(y => y + confidenceInterval);
+            const confidenceBandLower = predictedY.map(y => y - confidenceInterval);
 
-            if (myChart) {
-                myChart.destroy();
+            if (mainChart) {
+                mainChart.destroy();
             }
 
-            myChart = new Chart(ctx, {
+            mainChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: allX,
                     datasets: [{
-                        label: 'Mevcut Performans',
+                        label: 'Gerçek Performans',
                         data: [...scores, ...Array(futureDots).fill(null)],
-                        borderColor: 'orange',
-                        backgroundColor: 'orange',
-                        pointRadius: 5
+                        borderColor: '#2196F3',
+                        backgroundColor: '#2196F3',
+                        pointRadius: 6
                     }, {
-                        label: 'Tahmini Performans',
+                        label: 'Trend',
                         data: predictedY,
-                        borderColor: 'blue',
+                        borderColor: '#4CAF50',
                         borderDash: [5, 5],
                         pointRadius: 0
                     }, {
+                        label: 'Güven Aralığı (Üst)',
+                        data: confidenceBandUpper,
+                        borderColor: 'rgba(76, 175, 80, 0.2)',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        pointRadius: 0,
+                        fill: '+1'
+                    }, {
+                        label: 'Güven Aralığı (Alt)',
+                        data: confidenceBandLower,
+                        borderColor: 'rgba(76, 175, 80, 0.2)',
+                        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                        pointRadius: 0,
+                        fill: false
+                    }, {
                         label: 'Hedef',
                         data: Array(allX.length).fill(targetScore),
-                        borderColor: 'red',
+                        borderColor: '#F44336',
                         borderDash: [2, 2],
                         pointRadius: 0
                     }]
                 },
                 options: {
                     responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Performans ve Tahmin Grafiği'
+                        }
+                    },
                     scales: {
                         y: {
-                            beginAtZero: true,
-                            max: Math.max(targetScore * 1.2, Math.max(...scores) * 1.2)
+                            beginAtZero: false,
+                            title: {
+                                display: true,
+                                text: 'Puan'
+                            }
                         },
                         x: {
                             title: {
                                 display: true,
                                 text: 'Test Sayısı'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // İlerleme grafiği
+            const ctxProgress = document.getElementById('progressChart').getContext('2d');
+            
+            if (progressChart) {
+                progressChart.destroy();
+            }
+
+            const improvements = scores.slice(1).map((score, i) => score - scores[i]);
+            
+            progressChart = new Chart(ctxProgress, {
+                type: 'bar',
+                data: {
+                    labels: Array.from({length: improvements.length}, (_, i) => `Test ${i+2}`),
+                    datasets: [{
+                        label: 'Test Başına İlerleme',
+                        data: improvements,
+                        backgroundColor: improvements.map(imp => 
+                            imp >= 0 ? 'rgba(76, 175, 80, 0.5)' : 'rgba(244, 67, 54, 0.5)'
+                        ),
+                        borderColor: improvements.map(imp => 
+                            imp >= 0 ? 'rgb(76, 175, 80)' : 'rgb(244, 67, 54)'
+                        ),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Test Başına İlerleme Analizi'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Puan Değişimi'
                             }
                         }
                     }
